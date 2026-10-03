@@ -1,0 +1,27 @@
+name: Hardened CI/CD Deployment
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  build-and-deploy:
+    name: Build & Deploy on Self-Hosted Local Runner
+    runs-on: self-hosted  # Targets your local laptop runner
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Build Hardened Container
+        run: |
+          docker compose build --no-cache
+
+      - name: Start Secure Infrastructure
+        run: |
+          docker compose up -d
+
+      - name: Verify Service Health
+        run: |
+          Start-Sleep -Seconds 5
+          docker compose ps
