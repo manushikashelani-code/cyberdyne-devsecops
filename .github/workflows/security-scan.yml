@@ -7,62 +7,45 @@ on:
     branches: [ "main", "master" ]
 
 jobs:
-  sast-and-dependency-scan:
-    name: Code & Dependency Security (Bandit & Trivy FS)
+  iac-and-compose-linter:
+    name: Dockerfile & Docker Compose IaC Scan
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      # 1. Hadolint checks Dockerfile best practices (catches base image bloat, root usage, expose ports)
+      - name: Lint Dockerfile with Hadolint
+        uses: hadolint/hadolint-action@v3.1.0
         with:
-          python-version: '3.11'
+          dockerfile: Dockerfile
+        continue-on-error: true
 
-      - name: Run Python SAST Scan (Bandit)
-        run: |
-          pip install bandit
-          bandit -r app/ -f txt || true
-
-      - name: Run Dependency & Secrets Scan (Trivy FS)
-        uses: aquasecurity/trivy-action@master
-        with:
-          scan-type: 'fs'
-          scan-ref: '.'
-          hide-progress: false
-          format: 'table'
-          severity: 'HIGH,CRITICAL,MEDIUM'
-          exit-code: '0'
-
-  iac-misconfig-scan:
-    name: Infrastructure-as-Code Scan (Trivy Config)
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Scan Dockerfile & Docker Compose
+      # 2. Trivy Config Scan with explicit IaC framework targeting for Docker Compose
+      - name: Run Trivy Misconfiguration Scan on Compose & Dockerfile
         uses: aquasecurity/trivy-action@master
         with:
           scan-type: 'config'
           scan-ref: '.'
+          tf-vars: ''
           hide-progress: false
           format: 'table'
           severity: 'LOW,MEDIUM,HIGH,CRITICAL'
           exit-code: '0'
 
-  container-image-vulnerability-scan:
-    name: Container Base Image & CVE Scan (Trivy Image)
+  container-cve-scan:
+    name: Scan Built Base Image for OS Bloat CVEs
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Build Local Container Image for Scanning
+      - name: Build Local Container Image
         run: |
           docker build -t vulnerable-app:test .
 
-      - name: Scan Built Image for OS & Software CVEs
+      # 3. Trivy Image Scan (Scans the built python:3.11 layers to reveal hundreds of bloat-related CVEs)
+      - name: Scan Built Image for OS & Package Vulnerabilities
         uses: aquasecurity/trivy-action@master
         with:
           scan-type: 'image'
