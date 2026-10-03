@@ -1,4 +1,4 @@
-﻿name: Security Scanning Workflow
+﻿name: Comprehensive Security Scan
 
 on:
   push:
@@ -7,8 +7,8 @@ on:
     branches: [ "main", "master" ]
 
 jobs:
-  python-sast:
-    name: Python SAST Scan (Bandit)
+  sast-and-dependency-scan:
+    name: Code & Dependency Security (Bandit & Trivy FS)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
@@ -19,24 +19,55 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install Bandit
-        run: pip install bandit
+      - name: Run Python SAST Scan (Bandit)
+        run: |
+          pip install bandit
+          bandit -r app/ -f txt || true
 
-      - name: Run Bandit Scan
-        # Scans app.py and prints severe vulnerabilities
-        run: bandit -r app/ -f txt || true
+      - name: Run Dependency & Secrets Scan (Trivy FS)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          hide-progress: false
+          format: 'table'
+          severity: 'HIGH,CRITICAL,MEDIUM'
+          exit-code: '0'
 
-  container-iac-scan:
-    name: Container & IaC Security Scan (Trivy)
+  iac-misconfig-scan:
+    name: Infrastructure-as-Code Scan (Trivy Config)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Run Trivy Vulnerability & Config Scanner
+      - name: Scan Dockerfile & Docker Compose
         uses: aquasecurity/trivy-action@master
         with:
           scan-type: 'config'
+          scan-ref: '.'
           hide-progress: false
           format: 'table'
+          severity: 'LOW,MEDIUM,HIGH,CRITICAL'
+          exit-code: '0'
+
+  container-image-vulnerability-scan:
+    name: Container Base Image & CVE Scan (Trivy Image)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Build Local Container Image for Scanning
+        run: |
+          docker build -t vulnerable-app:test .
+
+      - name: Scan Built Image for OS & Software CVEs
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'image'
+          image-ref: 'vulnerable-app:test'
+          hide-progress: false
+          format: 'table'
+          severity: 'HIGH,CRITICAL'
           exit-code: '0'
