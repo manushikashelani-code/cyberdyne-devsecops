@@ -1,18 +1,32 @@
-version: '3'
+version: '3.8'
+
+networks:
+  backend-net:
+    driver: bridge
+    internal: false # Internal bridge network for isolated service communication
+
 services:
   web-api:
-    build: .
-    # VULNERABILITY: Mapping to 0.0.0.0 makes the app public to the entire network
+    build:
+      context: .
+      dockerfile: Dockerfile
+    # VULNERABILITY FIX: Bind strictly to localhost on host machine
     ports:
-      - "80:80"
-    # VULNERABILITY: Privileged mode gives the container root access to the host kernel
-    privileged: true
+      - "127.0.0.1:8080:8080"
+    # VULNERABILITY FIX: Removed privileged: true
+    environment:
+      - REDIS_HOST=broker
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-secure_admin_password_987}
     depends_on:
       - broker
+    networks:
+      - backend-net
 
   broker:
-    image: redis:latest # VULNERABILITY: Using 'latest' tag (Mutable/Unpredictable)
-    # VULNERABILITY: Exposing the database port to the outside world
-    ports:
-      - "6379:6379"
-    command: redis-server --requirepass admin_password_123
+    # VULNERABILITY FIX: Pinned version instead of mutable 'latest' tag
+    image: redis:7.2-alpine
+    # VULNERABILITY FIX: Removed public port exposure (6379:6379) to host network
+    command: redis-server --requirepass ${REDIS_PASSWORD:-secure_admin_password_987}
+    networks:
+      - backend-net

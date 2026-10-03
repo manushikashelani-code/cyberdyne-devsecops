@@ -1,17 +1,28 @@
-# VULNERABILITY: Using a massive base image (includes compilers, shells, and tools)
-FROM python:3.11
+# Stage 1: Build stage
+FROM python:3.11-slim AS builder
 
-# VULNERABILITY: Running as root by default
 WORKDIR /app
 
-# VULNERABILITY: Copying sensitive local files (like .env or .git) into the image
-COPY app/ .
+# Copy requirements and install dependencies into a wheel store / site-packages
+COPY app/requirements.txt .
+RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
 
-# VULNERABILITY: No caching optimization for layers
-RUN pip install flask redis rq
+# Stage 2: Hardened Distroless Runtime Stage
+FROM gcr.io/distroless/python3-debian12
 
-# VULNERABILITY: Exposing a privileged port
-EXPOSE 80
+WORKDIR /app
 
-# VULNERABILITY: Using a shell-based entrypoint which is susceptible to shell injection
-CMD python app.py
+# Copy installed dependencies from builder
+COPY --from=builder /install /usr/local
+# Copy application files
+COPY app/ /app
+
+# Switch to built-in non-root user
+USER nonroot:nonroot
+
+EXPOSE 8080
+
+ENV PYTHONPATH=/usr/local/lib/python3.11/site-packages
+
+# Safe execution entrypoint using gunicorn
+ENTRYPOINT ["python3", "-m", "gunicorn.app.wsgiapp", "-b", "0.0.0.0:8080", "app:app"]
